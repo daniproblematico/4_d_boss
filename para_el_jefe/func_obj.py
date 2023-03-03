@@ -32,32 +32,42 @@ def create_node(id, global_info_nodes, story_heigth_acum):
 
     return info_node
 
+def calculate_lenght(element_nodei_coordinates, element_nodej_coordinates):
+    """calculates the lenght of an element on the x-y plane
 
-def geometric_info(
+    Args:
+        beam_nodei_coordinates (list): coordinates of the node i of the beam in the order [x,y]
+        beam_nodej_coordinates (list): coordinates of the node j of the beam in the order [x,y]
+
+    Returns:
+        beam_lenght: lenght of the beam
+    """
+
+    # calculates the lenght of the beam using pitagoras theorem
+    element_lenght = np.sqrt(
+        (element_nodej_coordinates[1] - element_nodei_coordinates[1]) ** 2
+        + (element_nodej_coordinates[0] - element_nodei_coordinates[0]) ** 2
+    )
+
+    return element_lenght
+
+def calculate_angle(
     beam_nodei_coordinates,
     beam_nodej_coordinates,
     column_node_coordinates,
 ):
-    """calculates the lenght of the beam and the angle between the beam and the referency vector
+    """calculates the angle between the beam and the referency vector using the dot product
 
     Args:
         beam_nodei_coordinates (list): coordinates of the node i of the beam in the order [x,y]
         beam_nodej_coordinates (list): coordinates of the node j of the beam in the order [x,y]
         column_node_coordinates (list): coordinates of the node of the column in the order [x,y]
-        referency_vector (list): vector that will be used as referency to calculate the angle in the order [x,y]
 
     Returns:
-        beam_lenght: lenght of the beam
-        angle: angle between the beam and the referency vector in radians clockwise
+        angle: angle between the beam and the referency vector of the x axis in radians clockwise
     """
 
-    #calculates the lenght of the beam
-    beam_lenght = np.sqrt(
-        (beam_nodej_coordinates[1] - beam_nodei_coordinates[1]) ** 2
-        + (beam_nodej_coordinates[0] - beam_nodei_coordinates[0]) ** 2
-    )
-    
-    #calculates the angle between the beam and the referency vector
+    # creates the normal vector to the beam
     x_coord_diference = (
         beam_nodej_coordinates[0]
         + beam_nodei_coordinates[0]
@@ -68,8 +78,8 @@ def geometric_info(
         + beam_nodei_coordinates[1]
         - 2 * column_node_coordinates[1]
     )
-    
 
+    # calculates the angle between the normal vector and the referency vector
     referency_vector = [1, 0]
     normal_vector = np.array([x_coord_diference, y_coord_diference])
     referency_vector = np.array(referency_vector)
@@ -78,132 +88,148 @@ def geometric_info(
         / (np.linalg.norm(normal_vector) * np.linalg.norm(referency_vector))
     )
 
-    if y_coord_diference<0:
-        angle = 2*np.pi - angle
+    # if the normal vector is in the second or third quadrant, the angle is corrected
+    if y_coord_diference < 0:
+        angle = 2 * np.pi - angle
 
-    return beam_lenght, angle
+    return angle
 
+def extraer_viga(level, beam_id, section, reinforcement,  lenght):
 
-cont = 0
-
-# For each level, the information will be storaged
-for story in reversed(building_data["pisos"]):
-    #define keys for the levels dict
-    levels[story] = dict(
-        id=story,
-        key_nodes=[],
-        key_cols=list(building_data["col_piso"][story].keys()),
-        key_beams=list(building_data["vig_piso"][story].keys()),
-        story_heigth=building_data["pisos"][story],
-        story_heigth_acum=acumulator_heigths + building_data["pisos"][story],
-        info_cols={},
-        info_beams={},
-        nodes={},
-    )
-
-    acumulator_heigths += building_data["pisos"][story]
-
-    # For each element type, element information will be storaged
-    for type_element in ["cols", "beams"]:
-        # Key name from the building_data dict
-        list_to_iterate = levels[story][f"key_{type_element}"]
-        # Original name of the key in the building_data dict
-        original_key_name = "columnas" if type_element == "cols" else "vigas"
-
-        # For each element in the list, the information will be storaged
-        for element in list_to_iterate:
-
-            info_element = dict(
-                id=element,
-                connectivity=building_data[original_key_name][element],
-                node_i=building_data[original_key_name][element][0],
-                node_j=building_data[original_key_name][element][1],
-            )
-
-            # By element type, the information will be storaged
-            if type_element == "cols":
-                levels[story]["info_cols"][element] = info_element
-            elif type_element == "beams":
-                levels[story]["info_beams"][element] = info_element
-
-            for j, node in enumerate([info_element["node_i"], info_element["node_j"]]):
-
-                # Check if node is already storaged
-                if node in levels[story]["nodes"]:
-                    continue
-                # Check if it is a column node, only will be storaged final node
-                if type_element == "cols" and not j:
-                    continue
-
-                levels[story]["nodes"][node] = create_node(
-                    node, building_data["nodos"], levels[story]["story_heigth_acum"]
-                )
-
-                levels[story]["key_nodes"].append(node)
-
-
-columnas = {}
-
-#for each level
-for n in levels:
-    #for each column in the level
-    for i in levels[n]["key_cols"]:
-        connected_beam = {}
-        columnas[i + n] = dict(connected_beams=connected_beam)
-
-        for j in levels[n]["key_beams"]:
-            #check if the beam is connected to the column
-            if (
-                levels[n]["info_cols"][i]["node_j"]
-                in levels[n]["info_beams"][j]["connectivity"]
-            ):
-                #extract the geometric information of the beam connected to the column
-                beam_nodei_coordinates = [
-                    levels[n]["nodes"][levels[n]["info_beams"][j]["node_i"]]["x_coord"],
-                    levels[n]["nodes"][levels[n]["info_beams"][j]["node_i"]]["y_coord"],
-                ]
-                beam_nodej_coordinates = [
-                    levels[n]["nodes"][levels[n]["info_beams"][j]["node_j"]]["x_coord"],
-                    levels[n]["nodes"][levels[n]["info_beams"][j]["node_j"]]["y_coord"],
-                ]
-                column_node_coordinates = [
-                    levels[n]["nodes"][levels[n]["info_cols"][i]["node_j"]]["x_coord"],
-                    levels[n]["nodes"][levels[n]["info_cols"][i]["node_j"]]["y_coord"],
-                ]
-                #calcules the lenght and angle of the beam connected to the column
-                lenght, angle = geometric_info(
-                    beam_nodei_coordinates,
-                    beam_nodej_coordinates,
-                    column_node_coordinates,
-                )
-                #stores the information of the beam
-                connected_beam[j] = dict(
-                    orientacion=angle,
-                )
-
-
-def extraer_vigas(levels):
-    vigas = {}
     """Extracts the information of the beams making them objects of the class Beam
 
     Args:
         levels (dict): contains all the informatios of the building by level
+        beam_id (string): id of the beam
+        section (string): section of the beam
+        reinforcement (string): reinforcement of the beam
+        lenght (float): lenght of the beam
     """
-    for n in levels:
-        for i in levels[n]["key_beams"]:
+    return dict(
+        id=beam_id,
+        section=section,
+        reinforcement=reinforcement,
+        lenght=lenght,
+        level_id=level,
+    )
 
-            seccion = {}
-            datos_refuerzo = {}
+def extract_levels(data,initial_heigth):
+    """Extracts the information of the levels making them objects of the class Level
 
-            vigas[i] = dict(
-                id=i,
-                datos_seccion=seccion,
-                refuerzo=datos_refuerzo,
-                orientacion=[2, 3],
-                longitud=2,
+    Args:
+        data (dict): contains all the informatios of the building from the json file
+        initial_heigth (float): initial heigth of the building
+
+    Returns:
+        levels: dictionary with the information organized by level
+    """
+    levels = {}
+    # For each level, the information will be storaged
+    for story in reversed(data["pisos"]):
+    # define keys for the levels dict
+        levels[story] = dict(
+        id=story,
+        key_nodes=[],
+        key_cols=list(data["col_piso"][story].keys()),
+        key_beams=list(data["vig_piso"][story].keys()),
+        story_heigth=data["pisos"][story],
+        story_heigth_acum=initial_heigth + data["pisos"][story],
+        info_cols={},
+        info_beams={},
+        nodes={},
+    )
+        initial_heigth += data["pisos"][story]
+
+    # For each element type, element information will be storaged
+        for type_element in ["cols", "beams"]:
+        # Key name from the data dict
+            list_to_iterate = levels[story][f"key_{type_element}"]
+        # Original name of the key in the data dict
+            original_key_name = "columnas" if type_element == "cols" else "vigas"
+
+        # For each element in the list, the information will be storaged
+            for element in list_to_iterate:
+                info_element = dict(
+                id=element,
+                connectivity=data[original_key_name][element],
+                node_i=data[original_key_name][element][0],
+                node_j=data[original_key_name][element][1],
             )
-    return vigas
+
+            # By element type, the information will be storaged
+                if type_element == "cols":
+                    levels[story]["info_cols"][element] = info_element
+                elif type_element == "beams":
+                    levels[story]["info_beams"][element] = info_element
+
+                for j, node in enumerate([info_element["node_i"], info_element["node_j"]]):
+                # Check if node is already storaged
+                    if node in levels[story]["nodes"]:
+                        continue
+                # Check if it is a column node, only will be storaged final node
+                    if type_element == "cols" and not j:
+                        continue
+                    
+                    # Creates the element node
+                    levels[story]["nodes"][node] = create_node(
+                    node, data["nodos"], levels[story]["story_heigth_acum"]
+                )
+                    # Add the node to the list of nodes of the level
+                    levels[story]["key_nodes"].append(node)
+    return(levels)
+
+levels=extract_levels(building_data,0)
+
+columns = {}
+saved_beams = {}
+for n in levels:
+    # for each column in the level
+    for i in levels[n]["key_cols"]:
+        connected_beam = {}
+
+        columns[i+n] = dict(level_id=n, id=i,connected_beams=connected_beam)     #if two elements share id, they will be one only element
 
 
-print(columnas)
+        # for each beam
+        for j in levels[n]["key_beams"]:
+
+            # extract the geometric information of the beam connected to the column
+            beam_nodei_coordinates = [
+                levels[n]["nodes"][levels[n]["info_beams"][j]["node_i"]]["x_coord"],
+                levels[n]["nodes"][levels[n]["info_beams"][j]["node_i"]]["y_coord"],
+            ]
+            beam_nodej_coordinates = [
+                levels[n]["nodes"][levels[n]["info_beams"][j]["node_j"]]["x_coord"],
+                levels[n]["nodes"][levels[n]["info_beams"][j]["node_j"]]["y_coord"],
+            ]
+            column_node_coordinates = [
+                levels[n]["nodes"][levels[n]["info_cols"][i]["node_j"]]["x_coord"],
+                levels[n]["nodes"][levels[n]["info_cols"][i]["node_j"]]["y_coord"],
+            ]
+            # calcules the lenght and angle of the beam connected to the column
+            beam_lenght = calculate_lenght(
+                beam_nodei_coordinates,
+                beam_nodej_coordinates,
+            )
+
+            saved_beams[j]=extraer_viga(n, j, "seccion", "refuerzo", beam_lenght)
+            
+            # check if the beam is connected to the column
+            if (
+                levels[n]["info_cols"][i]["node_j"]
+                in levels[n]["info_beams"][j]["connectivity"]
+            ):
+                angle = calculate_angle(
+                    beam_nodei_coordinates,
+                    beam_nodej_coordinates,
+                    column_node_coordinates,
+            )
+                # stores the information of the beam connected to the column
+                connected_beam[j] = dict(
+                    beam_id=j,
+                    orientacion=angle,
+                )
+
+
+print(columns)
 x = 2
